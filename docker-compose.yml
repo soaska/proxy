@@ -9,9 +9,6 @@ services:
     ports:
       - "6666:6666"
     restart: unless-stopped
-    volumes:
-      # Mount config file (optional - if you want to modify config without rebuilding)
-      # - ./config.yml:/root/config.yml:ro
     environment:
       # Add any environment variables if needed
       - TZ=Europe/Moscow
