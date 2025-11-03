@@ -7,7 +7,8 @@ services:
       dockerfile: Dockerfile
     container_name: telegram-socks-proxy
     ports:
-      - "6666:6666"
+      - "6666:6666/tcp"
+      - "6666:6666/udp"
     restart: unless-stopped
     environment:
       # Add any environment variables if needed

@@ -70,12 +70,22 @@ func main() {
 						}
 						return operr
 					},
-					LocalAddr: &net.TCPAddr{
-						IP: newAddr,
-					},
 				}
 
-				conn, err := dialer.DialContext(ctx, "tcp4", addr)
+				// Set appropriate local address based on network type
+				if network == "tcp" || network == "tcp4" || network == "tcp6" {
+					dialer.LocalAddr = &net.TCPAddr{
+						IP: newAddr,
+					}
+					network = "tcp4"
+				} else if network == "udp" || network == "udp4" || network == "udp6" {
+					dialer.LocalAddr = &net.UDPAddr{
+						IP: newAddr,
+					}
+					network = "udp4"
+				}
+
+				conn, err := dialer.DialContext(ctx, network, addr)
 				if err != nil {
 					log.Println("Failed to dial:", err)
 				}
