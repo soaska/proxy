@@ -1,0 +1,29 @@
+version: '3.8'
+
+services:
+  proxy:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: telegram-socks-proxy
+    ports:
+      - "6666:6666"
+    restart: unless-stopped
+    volumes:
+      # Mount config file (optional - if you want to modify config without rebuilding)
+      # - ./config.yml:/root/config.yml:ro
+    environment:
+      # Add any environment variables if needed
+      - TZ=Europe/Moscow
+    networks:
+      - proxy-network
+    healthcheck:
+      test: ["CMD", "nc", "-z", "localhost", "6666"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  proxy-network:
+    driver: bridge
