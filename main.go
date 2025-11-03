@@ -20,7 +20,7 @@ func main() {
 	}
 	go checkIPsLoop()
 
-	subnet := iplib.NewNet6(net.ParseIP(cfg.Subnet), cfg.SubnetMask, 0)
+	subnet := iplib.NewNet4(net.ParseIP(cfg.Subnet), cfg.SubnetMask)
 
 	server := &socks5.Server{
 		Dialer: func(ctx context.Context, network, addr string) (net.Conn, error) {
@@ -29,7 +29,7 @@ func main() {
 				return nil, fmt.Errorf("failed to split host and port: %w", err)
 			}
 
-			ip, err := net.ResolveIPAddr("ip", host)
+			ip, err := net.ResolveIPAddr("ip4", host)
 			if err != nil {
 				return nil, fmt.Errorf("failed to resolve IP: %w", err)
 			}
@@ -75,7 +75,7 @@ func main() {
 					},
 				}
 
-				conn, err := dialer.DialContext(ctx, network, addr)
+				conn, err := dialer.DialContext(ctx, "tcp4", addr)
 				if err != nil {
 					log.Println("Failed to dial:", err)
 				}
