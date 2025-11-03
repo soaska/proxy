@@ -1,6 +1,6 @@
 module github.com/soaska/proxy
 
-go 1.25
+go 1.25.3
 
 require (
 	github.com/c-robinson/iplib v1.0.8
