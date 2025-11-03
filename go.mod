@@ -1,4 +1,4 @@
-module github.com/huecker-io/proxy
+module github.com/soaska/proxy
 
 go 1.22.3
 

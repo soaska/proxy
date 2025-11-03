@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"runtime"
 	"strings"
 	"syscall"
 
 	"github.com/c-robinson/iplib"
+	"golang.org/x/sys/unix"
 	"tailscale.com/net/socks5"
 )
 
@@ -50,9 +52,15 @@ func main() {
 
 				dialer := &net.Dialer{
 					Control: func(network, address string, c syscall.RawConn) error {
+						// IP_FREEBIND is only available on Linux
+						if runtime.GOOS != "linux" {
+							return nil
+						}
 						var operr error
 						if err := c.Control(func(fd uintptr) {
-							operr = syscall.SetsockoptInt(int(fd), syscall.SOL_IP, syscall.IP_FREEBIND, 1)
+							// IP_FREEBIND = 15 on Linux
+							const IP_FREEBIND = 15
+							operr = unix.SetsockoptInt(int(fd), unix.IPPROTO_IP, IP_FREEBIND, 1)
 						}); err != nil {
 							return err
 						}
@@ -78,6 +86,8 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
+	log.Printf("SOCKS5 proxy server started on %s", ln.Addr().String())
 
 	if err := server.Serve(ln); err != nil {
 		panic(err)

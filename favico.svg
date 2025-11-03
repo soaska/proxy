@@ -1,0 +1,21 @@
+<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg">
+  <!-- Dark background for favicon -->
+  <rect width="32" height="32" fill="#0f172a" rx="6"/>
+  
+  <!-- Paper plane (Telegram style) - centered and scaled for favicon -->
+  <g transform="translate(16, 14)">
+    <path d="M -8,-4 L 8,0 L -8,4 L -5,0 Z" fill="#3b82f6"/>
+    <path d="M -5,0 L 8,0" stroke="#0f172a" stroke-width="1.2"/>
+  </g>
+  
+  <!-- Three dots below plane with connecting lines -->
+  <g transform="translate(16, 23)">
+    <circle cx="-6" cy="0" r="2" fill="#64748b"/>
+    <circle cx="0" cy="0" r="2" fill="#64748b"/>
+    <circle cx="6" cy="0" r="2" fill="#64748b"/>
+    
+    <!-- Lines between dots -->
+    <line x1="-4" y1="0" x2="-2" y2="0" stroke="#334155" stroke-width="1.5"/>
+    <line x1="2" y1="0" x2="4" y2="0" stroke="#334155" stroke-width="1.5"/>
+  </g>
+</svg>
