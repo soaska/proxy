@@ -24,7 +24,6 @@ func main() {
 
 	server := &socks5.Server{
 		Dialer: func(ctx context.Context, network, addr string) (net.Conn, error) {
-			// Split host and port
 			host, _, err := net.SplitHostPort(addr)
 			if err != nil {
 				return nil, fmt.Errorf("failed to split host and port: %w", err)
@@ -35,7 +34,14 @@ func main() {
 				return nil, fmt.Errorf("failed to resolve IP: %w", err)
 			}
 
+			wlMutex.RLock()
 			_, ok := whitelist[ip.String()]
+			wlMutex.RUnlock()
+
+			if !ok {
+				ok = isIPInRange(ip.IP)
+			}
+
 			if !ok {
 				for _, whost := range cfg.Whitelist {
 					if strings.EqualFold(host, whost) {
@@ -52,13 +58,11 @@ func main() {
 
 				dialer := &net.Dialer{
 					Control: func(network, address string, c syscall.RawConn) error {
-						// IP_FREEBIND is only available on Linux
 						if runtime.GOOS != "linux" {
 							return nil
 						}
 						var operr error
 						if err := c.Control(func(fd uintptr) {
-							// IP_FREEBIND = 15 on Linux
 							const IP_FREEBIND = 15
 							operr = unix.SetsockoptInt(int(fd), unix.IPPROTO_IP, IP_FREEBIND, 1)
 						}); err != nil {
