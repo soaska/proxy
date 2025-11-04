@@ -435,7 +435,7 @@ func (c *Conn) handleUDPRequest(
 		return fmt.Errorf("write to target %s fail: %w", req.addr, err)
 	}
 	if nn != len(data) {
-		return fmt.Errorf("write to target %s fail: %w", io.ErrShortWrite)
+		return fmt.Errorf("write to target %s fail: %w", req.addr, io.ErrShortWrite)
 	}
 	return nil
 }

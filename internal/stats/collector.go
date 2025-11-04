@@ -18,6 +18,7 @@ type StatsCollector struct {
 	geoip           *geoip.Service
 	activeConns     sync.Map // map[uint64]*ConnectionTracker
 	serverStartTime time.Time
+	retentionDays   int
 
 	// Atomic counters for fast access
 	activeCount atomic.Int32
@@ -25,11 +26,16 @@ type StatsCollector struct {
 }
 
 // NewStatsCollector creates a new statistics collector
-func NewStatsCollector(db *sql.DB, geoipService *geoip.Service) *StatsCollector {
+func NewStatsCollector(db *sql.DB, geoipService *geoip.Service, retentionDays int) *StatsCollector {
+	if retentionDays < 0 {
+		retentionDays = 0
+	}
+
 	sc := &StatsCollector{
 		db:              db,
 		geoip:           geoipService,
 		serverStartTime: time.Now(),
+		retentionDays:   retentionDays,
 	}
 
 	// Initialize server_stats if needed
@@ -75,12 +81,13 @@ func (sc *StatsCollector) TrackConnection(ctx context.Context, clientIP, targetA
 	sc.activeCount.Add(1)
 	sc.totalConns.Add(1)
 	sc.updateServerStats(1, 0, 0)
-	sc.updateGeoStats(country, 0)
+	sc.updateGeoStats(country, 0, true)
 
 	// Create tracker
 	tracker := &ConnectionTracker{
 		id:        uint64(connID),
 		collector: sc,
+		country:   country,
 		startTime: connectedAt,
 	}
 
@@ -187,7 +194,7 @@ func (sc *StatsCollector) updateServerStats(connDelta int64, bytesIn, bytesOut i
 }
 
 // updateGeoStats updates geographical statistics
-func (sc *StatsCollector) updateGeoStats(country string, bytes int64) {
+func (sc *StatsCollector) updateGeoStats(country string, bytes int64, incrementConnections bool) {
 	if country == "" || country == "Unknown" {
 		return
 	}
@@ -197,14 +204,19 @@ func (sc *StatsCollector) updateGeoStats(country string, bytes int64) {
 		countryName = sc.geoip.GetCountryName(country)
 	}
 
+	connDelta := int64(0)
+	if incrementConnections {
+		connDelta = 1
+	}
+
 	_, err := sc.db.Exec(
 		`INSERT INTO geo_stats (country, country_name, connections, total_bytes, last_updated)
-		 VALUES (?, ?, 1, ?, datetime('now'))
+		 VALUES (?, ?, ?, ?, datetime('now'))
 		 ON CONFLICT(country) DO UPDATE SET
-		     connections = connections + 1,
+		     connections = connections + ?,
 		     total_bytes = total_bytes + ?,
 		     last_updated = datetime('now')`,
-		country, countryName, bytes, bytes,
+		country, countryName, connDelta, bytes, connDelta, bytes,
 	)
 	if err != nil {
 		log.Printf("[STATS] Failed to update geo stats: %v", err)
@@ -213,20 +225,28 @@ func (sc *StatsCollector) updateGeoStats(country string, bytes int64) {
 
 // cleanupLoop runs periodic cleanup tasks
 func (sc *StatsCollector) cleanupLoop() {
+	if sc.retentionDays <= 0 {
+		log.Println("[STATS] Retention policy disabled; skipping cleanup loop")
+		return
+	}
+
 	ticker := time.NewTicker(24 * time.Hour)
 	defer ticker.Stop()
 
+	sc.cleanupExpiredConnections()
+
 	for range ticker.C {
-		// Cleanup old connections (retention policy)
-		_, err := sc.db.Exec(
-			`DELETE FROM connections WHERE connected_at < datetime('now', '-90 days')`,
-		)
-		if err != nil {
-			log.Printf("[STATS] Failed to cleanup old connections: %v", err)
-		} else {
-			log.Println("[STATS] Old connections cleaned up")
-		}
+		sc.cleanupExpiredConnections()
 	}
+}
+
+func (sc *StatsCollector) cleanupExpiredConnections() {
+	cutoff := time.Now().AddDate(0, 0, -sc.retentionDays)
+	if _, err := sc.db.Exec(`DELETE FROM connections WHERE connected_at < ?`, cutoff); err != nil {
+		log.Printf("[STATS] Failed to cleanup old connections: %v", err)
+		return
+	}
+	log.Printf("[STATS] Old connections cleaned up (retention=%d days)", sc.retentionDays)
 }
 
 // Close gracefully closes the stats collector

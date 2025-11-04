@@ -61,7 +61,7 @@ func main() {
 			}
 
 			// Initialize stats collector
-			statsCollector = stats.NewStatsCollector(db, geoipService)
+			statsCollector = stats.NewStatsCollector(db, geoipService, cfg.Stats.RetentionDays)
 
 			// Initialize speedtest service
 			speedtestService = speedtest.NewService(db, geoipService)

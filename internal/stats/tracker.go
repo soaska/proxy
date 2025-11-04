@@ -12,9 +12,11 @@ import (
 type ConnectionTracker struct {
 	id        uint64
 	collector *StatsCollector
+	country   string
 	bytesIn   atomic.Int64
 	bytesOut  atomic.Int64
 	startTime time.Time
+	closed    atomic.Bool
 }
 
 // WrapConnection wraps a net.Conn to track traffic
@@ -37,13 +39,18 @@ func (ct *ConnectionTracker) AddBytesOut(n int64) {
 
 // Close finalizes the connection tracking
 func (ct *ConnectionTracker) Close(ctx context.Context) {
+	if !ct.closed.CompareAndSwap(false, true) {
+		return
+	}
+
 	bytesIn := ct.bytesIn.Load()
 	bytesOut := ct.bytesOut.Load()
 	duration := int64(time.Since(ct.startTime).Seconds())
+	totalBytes := bytesIn + bytesOut
 
 	// Update database
 	_, err := ct.collector.db.ExecContext(ctx,
-		`UPDATE connections 
+		`UPDATE connections
 		 SET bytes_in = ?, bytes_out = ?, disconnected_at = ?, duration = ?
 		 WHERE id = ?`,
 		bytesIn, bytesOut, time.Now(), duration, ct.id,
@@ -55,6 +62,7 @@ func (ct *ConnectionTracker) Close(ctx context.Context) {
 	// Update counters
 	ct.collector.activeCount.Add(-1)
 	ct.collector.updateServerStats(0, bytesIn, bytesOut)
+	ct.collector.updateGeoStats(ct.country, totalBytes, false)
 	ct.collector.activeConns.Delete(ct.id)
 
 	log.Printf("[STATS] Connection closed: ID=%d, Duration=%ds, In=%d, Out=%d",

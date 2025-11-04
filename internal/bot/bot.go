@@ -75,8 +75,16 @@ func (b *Bot) Start(ctx context.Context) error {
 // handleMessage processes incoming messages
 func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 	if !b.isAdmin(msg.From.ID) {
-		reply := tgbotapi.NewMessage(msg.Chat.ID, "❌ Unauthorized. This bot is private.")
-		b.api.Send(reply)
+		if msg.IsCommand() && msg.Command() == "start" {
+			reply := tgbotapi.NewMessage(msg.Chat.ID, fmt.Sprintf(
+				"👋 Hello! Your Telegram ID is %d.\n\nThis bot is private and only admins can use it. Share your ID with an admin if you need access.",
+				msg.From.ID,
+			))
+			b.api.Send(reply)
+		} else {
+			reply := tgbotapi.NewMessage(msg.Chat.ID, "❌ Unauthorized. This bot is private.")
+			b.api.Send(reply)
+		}
 		return
 	}
 
