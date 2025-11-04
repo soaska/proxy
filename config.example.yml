@@ -45,4 +45,4 @@ telegram:
   enabled: true
   bot_token: ""  # Set via TELEGRAM_BOT_TOKEN env variable
   admin_ids:
-    - 123456789  # Your Telegram user ID
+    - 7238916572 # Your Telegram user ID
