@@ -15,25 +15,25 @@ services:
       - TZ=Europe/Moscow
       
       # SOCKS5 Configuration
-      #- LISTEN=:6666
-      #- SUBNET=fe80::
-      #- SUBNET_MASK=64
-      #- REFRESH_INTERVAL=1m
+      - LISTEN=:6666
+      - SUBNET=fe80::
+      - SUBNET_MASK=64
+      - REFRESH_INTERVAL=1m
       
       # Statistics
-      #- STATS_ENABLED=true
-      #- STATS_DATABASE_PATH=/root/data/stats.db
-      #- STATS_GEOIP_PATH=/root/data/GeoLite2-City.mmdb
-      #- STATS_RETENTION_DAYS=90
+      - STATS_ENABLED=true
+      - STATS_DATABASE_PATH=/root/data/stats.db
+      - STATS_GEOIP_PATH=/root/data/GeoLite2-City.mmdb
+      - STATS_RETENTION_DAYS=90
       
       # API Configuration
-      #- API_ENABLED=true
-      #- API_LISTEN=:8080
-      #- API_KEY=${API_KEY:-your-secret-api-key-change-this}
+      - API_ENABLED=true
+      - API_LISTEN=:8080
+      - API_KEY=${API_KEY:-your-secret-api-key-change-this}
       
       # Telegram Bot
       #- TELEGRAM_ENABLED=${TELEGRAM_ENABLED:-false}
-      #- TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
+      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       
     volumes:
       - data:/root/data  # Persistent storage for database and GeoIP
