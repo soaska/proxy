@@ -36,8 +36,8 @@ services:
       #- TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN}
       
     volumes:
-      - ./data:/root/data  # Persistent storage for database and GeoIP
-      - ./config.yml:/root/config.yml:ro  # Optional: mount custom config
+      - data:/root/data  # Persistent storage for database and GeoIP
+      #- ./config.yml:/root/config.yml:ro  # Optional: mount custom config
     networks:
       - proxy-network
     healthcheck:
@@ -46,7 +46,8 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
-
+volumes:
+  data:
 networks:
   proxy-network:
     driver: bridge
