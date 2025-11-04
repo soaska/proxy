@@ -39,7 +39,7 @@ api:
   cors_origins:
     - "https://proxi.soaska.ru"
     - "http://localhost:5173"  # For local development
-    - "https://localhost:3000"
+    - "http://localhost:3000"
 
 # Telegram Bot Configuration
 telegram:
