@@ -16,7 +16,7 @@ services:
       
       # SOCKS5 Configuration
       - LISTEN=:6666
-      - SUBNET=fe80::
+      #- SUBNET=fe80::
       - SUBNET_MASK=64
       - REFRESH_INTERVAL=1m
       
