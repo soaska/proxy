@@ -13,7 +13,8 @@ import (
 
 	"github.com/c-robinson/iplib"
 	"golang.org/x/sys/unix"
-	"tailscale.com/net/socks5"
+
+	"github.com/soaska/proxy/internal/socks5"
 
 	"github.com/soaska/proxy/internal/api"
 	"github.com/soaska/proxy/internal/bot"
@@ -168,10 +169,15 @@ func main() {
 
 				// Track connection if stats enabled
 				if statsCollector != nil {
-					// Extract client IP from the SOCKS5 context
-					// For now we'll use a placeholder - this would need modification to the SOCKS5 library
-					// to properly extract the client IP from the connection
-					clientIP := "unknown"
+					clientIP := socks5.ClientAddr(dialCtx)
+					if clientIP != "" {
+						if host, _, err := net.SplitHostPort(clientIP); err == nil {
+							clientIP = host
+						}
+					}
+					if clientIP == "" {
+						clientIP = "unknown"
+					}
 					tracker := statsCollector.TrackConnection(dialCtx, clientIP, addr)
 					if tracker != nil {
 						// Wrap connection with tracker

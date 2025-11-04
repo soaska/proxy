@@ -27,6 +27,13 @@ func NewBot(token string, adminIDs []int64, collector *stats.StatsCollector, st 
 		return nil, fmt.Errorf("failed to create bot: %w", err)
 	}
 
+	_, err = api.Request(tgbotapi.DeleteWebhookConfig{
+		DropPendingUpdates: true,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to delete webhook: %w", err)
+	}
+
 	bot := &Bot{
 		api:       api,
 		collector: collector,
@@ -52,8 +59,11 @@ func (b *Bot) Start(ctx context.Context) error {
 		select {
 		case <-ctx.Done():
 			return nil
-		case update := <-updates:
-			if update.Message == nil {
+		case update, ok := <-updates:
+			if !ok {
+				return fmt.Errorf("updates channel closed")
+			}
+			if update.Message == nil || update.Message.From == nil {
 				continue
 			}
 
