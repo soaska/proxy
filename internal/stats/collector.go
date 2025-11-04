@@ -249,6 +249,11 @@ func (sc *StatsCollector) cleanupExpiredConnections() {
 	log.Printf("[STATS] Old connections cleaned up (retention=%d days)", sc.retentionDays)
 }
 
+// GetDB returns the database connection (for internal use)
+func (sc *StatsCollector) GetDB() *sql.DB {
+	return sc.db
+}
+
 // Close gracefully closes the stats collector
 func (sc *StatsCollector) Close() {
 	log.Println("[STATS] Closing stats collector...")
