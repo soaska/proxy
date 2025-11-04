@@ -1,3 +1,4 @@
+# SOCKS5 Proxy Configuration
 listen: ":6666"
 whitelist:
   - telegram.org
@@ -18,6 +19,30 @@ whitelist:
   - 149.154.168.0/22
   - 149.154.172.0/22
   - 185.76.151.0/24
+
 refresh_interval: 1m
 subnet: "fe80::"
 subnet_mask: 64
+
+# Statistics Configuration
+stats:
+  enabled: true
+  database_path: "./data/stats.db"
+  geoip_path: "./data/GeoLite2-City.mmdb"
+  retention_days: 90  # Keep stats for 90 days
+
+# HTTP API Configuration
+api:
+  enabled: true
+  listen: ":8080"
+  api_key: "your-secret-api-key-change-this"  # Override with API_KEY env
+  cors_origins:
+    - "https://proxi.soaska.ru"
+    - "http://localhost:5173"  # For local development
+
+# Telegram Bot Configuration
+telegram:
+  enabled: true
+  bot_token: ""  # Set via TELEGRAM_BOT_TOKEN env variable
+  admin_ids:
+    - 123456789  # Your Telegram user ID
