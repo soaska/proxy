@@ -41,8 +41,12 @@ func NewBot(token string, adminIDs []int64, collector *stats.StatsCollector, st 
 		adminIDs:  adminIDs,
 	}
 
-	// Set speedtest notification callback
-	st.SetNotifyCallback(bot.onSpeedtestCompleted)
+	// Set speedtest notification callback if service is available
+	if st != nil {
+		st.SetNotifyCallback(bot.onSpeedtestCompleted)
+	} else {
+		log.Printf("[BOT] Speedtest notifications disabled: service unavailable")
+	}
 
 	log.Printf("[BOT] Authorized on account %s", api.Self.UserName)
 	return bot, nil
@@ -124,6 +128,12 @@ This bot provides detailed statistics for the SOCKS5 proxy server.
 
 // handleStats sends server statistics
 func (b *Bot) handleStats(msg *tgbotapi.Message) {
+	if b.collector == nil {
+		reply := tgbotapi.NewMessage(msg.Chat.ID, "Statistics module is disabled.")
+		b.api.Send(reply)
+		return
+	}
+
 	ctx := context.Background()
 	statsData, err := b.collector.GetPublicStats(ctx)
 	if err != nil {
@@ -162,6 +172,12 @@ func (b *Bot) handleStats(msg *tgbotapi.Message) {
 
 // handleSpeedtest runs a speedtest
 func (b *Bot) handleSpeedtest(msg *tgbotapi.Message) {
+	if b.speedtest == nil {
+		reply := tgbotapi.NewMessage(msg.Chat.ID, "Speedtest service is disabled.")
+		b.api.Send(reply)
+		return
+	}
+
 	reply := tgbotapi.NewMessage(msg.Chat.ID, "🔄 Running speed test... This may take a minute.")
 	b.api.Send(reply)
 

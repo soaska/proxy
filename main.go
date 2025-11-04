@@ -81,7 +81,7 @@ func main() {
 	}
 
 	// Start Telegram bot if enabled
-	if cfg.Telegram.Enabled && statsCollector != nil && cfg.Telegram.BotToken != "" {
+	if cfg.Telegram.Enabled && cfg.Telegram.BotToken != "" {
 		telegramBot, err := bot.NewBot(cfg.Telegram.BotToken, cfg.Telegram.AdminIDs, statsCollector, speedtestService)
 		if err != nil {
 			log.Printf("[BOT] Failed to initialize bot: %v", err)

@@ -41,6 +41,9 @@ COPY --from=builder /app/config.example.yml ./config.yml
 # Create data directory for database and GeoIP
 RUN mkdir -p /root/data
 
+# Copy data assets (e.g., GeoIP database) into runtime image
+COPY --from=builder /app/data /root/data
+
 # Expose ports (SOCKS5 and API)
 EXPOSE 6666 8080
 
