@@ -591,16 +591,21 @@ func (b *Bot) handleServerInfo(msg *tgbotapi.Message) {
 		float64(dbSizeKB)/1024)
 
 	// Add geographic coverage if available
-	if len(statsData.Countries) > 0 {
+	if len(statsData.Countries) > 0 && statsData.Countries[0].Country != "" {
 		text += fmt.Sprintf(`
-🌐 *Geographic Coverage*
-	  • Top Country: %s %s (%.1f%%)
-	  • Total Countries: %d
-`,
+	🌐 *Geographic Coverage*
+		  • Top Country: %s %s (%.1f%%)
+		  • Total Countries: %d
+	`,
 			getCountryFlag(statsData.Countries[0].Country),
 			statsData.Countries[0].CountryName,
 			statsData.Countries[0].Percentage,
 			len(statsData.Countries))
+	} else {
+		text += `
+	🌐 *Geographic Coverage*
+		  • No country data available yet
+	`
 	}
 
 	reply := tgbotapi.NewMessage(msg.Chat.ID, text)
