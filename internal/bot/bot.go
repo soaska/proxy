@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"net"
 	"strings"
 	"time"
 
@@ -132,14 +131,6 @@ func (b *Bot) handleMessage(msg *tgbotapi.Message) {
 		b.handleStatus(msg)
 	case "health":
 		b.handleHealth(msg)
-	case "ips":
-		b.handleTopIPs(msg)
-	case "ip":
-		b.handleIPInfo(msg)
-	case "uniqueips":
-		b.handleUniqueIPs(msg)
-	case "ipactivity":
-		b.handleIPActivity(msg)
 	default:
 		reply := tgbotapi.NewMessage(msg.Chat.ID, "❓ Unknown command. Use /help to see available commands.")
 		b.api.Send(reply)
@@ -489,10 +480,10 @@ func (b *Bot) handleRecentConnections(msg *tgbotapi.Message) {
 
 	rows, err := b.collector.GetDB().QueryContext(ctx,
 		`SELECT country, city, connected_at, bytes_in, bytes_out, duration
-		 FROM connections
-		 WHERE disconnected_at IS NOT NULL
-		 ORDER BY connected_at DESC
-		 LIMIT 10`)
+	 FROM connections
+	 WHERE disconnected_at IS NOT NULL
+	 ORDER BY connected_at DESC
+	 LIMIT 10`)
 	if err != nil {
 		b.sendError(msg.Chat.ID, "Failed to get recent connections")
 		return
@@ -512,18 +503,61 @@ func (b *Bot) handleRecentConnections(msg *tgbotapi.Message) {
 		}
 
 		count++
-		totalMB := float64(bytesIn+bytesOut) / (1024 * 1024)
+		totalBytes := bytesIn + bytesOut
+		totalMB := float64(totalBytes) / (1024 * 1024)
 		location := country
 		if city != "" {
 			location = fmt.Sprintf("%s, %s", city, country)
 		}
 
-		text += fmt.Sprintf("%s *%s*\n   ⏱ %s ago | 📊 %.1f MB | ⌛ %s\n",
+		// Format duration with milliseconds precision
+		durationStr := ""
+		speedStr := ""
+
+		if duration > 0 {
+			// Convert duration from seconds to display format
+			seconds := float64(duration)
+
+			if seconds >= 1 {
+				// Display as seconds with decimal precision
+				durationStr = fmt.Sprintf("%.2fs", seconds)
+			} else {
+				// Display as milliseconds
+				durationStr = fmt.Sprintf("%.0fms", seconds*1000)
+			}
+
+			// Calculate speed (bytes per second)
+			if seconds > 0 {
+				speedBps := float64(totalBytes) / seconds
+				speedKBps := speedBps / 1024
+
+				if speedKBps >= 1024 {
+					speedStr = fmt.Sprintf(" | 🚀 %.2f MB/s", speedKBps/1024)
+				} else if speedKBps >= 1 {
+					speedStr = fmt.Sprintf(" | 🚀 %.2f KB/s", speedKBps)
+				} else {
+					speedStr = fmt.Sprintf(" | 🚀 %.0f B/s", speedBps)
+				}
+			}
+		} else {
+			durationStr = "<0.1s"
+		}
+
+		// Calculate packets (approximate - assuming average packet size of 1500 bytes)
+		packetsApprox := totalBytes / 1500
+		packetsStr := ""
+		if packetsApprox > 0 {
+			packetsStr = fmt.Sprintf(" | 📦 ~%s pkts", formatNumber(packetsApprox))
+		}
+
+		text += fmt.Sprintf("%s *%s*\n   ⏱ %s ago | 📊 %.2f MB | ⌛ %s%s%s\n",
 			getCountryFlag(country),
 			location,
 			formatTimeAgo(connectedAt),
 			totalMB,
-			formatDuration(time.Duration(duration)*time.Second))
+			durationStr,
+			speedStr,
+			packetsStr)
 	}
 
 	if count == 0 {
@@ -546,6 +580,7 @@ func (b *Bot) handleServerInfo(msg *tgbotapi.Message) {
 	ctx := context.Background()
 	statsData, err := b.collector.GetPublicStats(ctx)
 	if err != nil {
+		log.Printf("[BOT] Error getting public stats: %v", err)
 		b.sendError(msg.Chat.ID, "Failed to get server info")
 		return
 	}
@@ -553,10 +588,12 @@ func (b *Bot) handleServerInfo(msg *tgbotapi.Message) {
 	uptime := formatDuration(time.Duration(statsData.UptimeSeconds) * time.Second)
 	trafficIn, trafficOut := b.getTrafficBreakdown(ctx)
 
-	// Get database size
+	// Get database size with error handling
 	var dbSizeKB int64
-	if err := b.collector.GetDB().QueryRow("SELECT page_count * page_size / 1024 FROM pragma_page_count(), pragma_page_size()").Scan(&dbSizeKB); err != nil {
-		log.Printf("[BOT] Error getting database size: %v", err)
+	dbErr := b.collector.GetDB().QueryRowContext(ctx,
+		"SELECT page_count * page_size / 1024 FROM pragma_page_count(), pragma_page_size()").Scan(&dbSizeKB)
+	if dbErr != nil {
+		log.Printf("[BOT] Error getting database size: %v", dbErr)
 		dbSizeKB = 0
 	}
 
@@ -566,28 +603,27 @@ func (b *Bot) handleServerInfo(msg *tgbotapi.Message) {
 		trafficRatio = trafficIn / trafficOut
 	}
 
-	text := fmt.Sprintf(`
-ℹ️ *Detailed Server Information*
+	text := fmt.Sprintf(`ℹ️ *Detailed Server Information*
 
 🖥 *Server Status*
-	  • Uptime: %s
-	  • Status: 🟢 Online
-	  • Active Connections: %d
+   • Uptime: %s
+   • Status: 🟢 Online
+   • Active Connections: %d
 
 📊 *Traffic Statistics*
-	  • Total: %.2f GB
-	  • Download: %.2f GB
-	  • Upload: %.2f GB
-	  • Ratio: %.2f:1
+   • Total: %.2f GB
+   • Download: %.2f GB
+   • Upload: %.2f GB
+   • Ratio: %.2f:1
 
 🔗 *Connection Statistics*
-	  • Total Connections: %s
-	  • Active Now: %d
-	  • Countries Served: %d
+   • Total Connections: %s
+   • Active Now: %d
+   • Countries Served: %d
 
 💾 *Database*
-	  • Size: %.2f MB
-	  • Tables: 4 (connections, server_stats, geo_stats, speedtest_results)
+   • Size: %.2f MB
+   • Tables: 4 (connections, server_stats, geo_stats, speedtest_results)
 `,
 		uptime,
 		statsData.ActiveConnections,
@@ -604,8 +640,8 @@ func (b *Bot) handleServerInfo(msg *tgbotapi.Message) {
 	if len(statsData.Countries) > 0 && statsData.Countries[0].Country != "" {
 		text += fmt.Sprintf(`
 🌐 *Geographic Coverage*
-	  • Top Country: %s %s (%.1f%%)
-	  • Total Countries: %d
+   • Top Country: %s %s (%.1f%%)
+   • Total Countries: %d
 `,
 			getCountryFlag(statsData.Countries[0].Country),
 			statsData.Countries[0].CountryName,
@@ -614,13 +650,15 @@ func (b *Bot) handleServerInfo(msg *tgbotapi.Message) {
 	} else {
 		text += `
 🌐 *Geographic Coverage*
-	  • No country data available yet
+   • No country data available yet
 `
 	}
 
 	reply := tgbotapi.NewMessage(msg.Chat.ID, text)
 	reply.ParseMode = "Markdown"
-	b.api.Send(reply)
+	if _, err := b.api.Send(reply); err != nil {
+		log.Printf("[BOT] Error sending info message: %v", err)
+	}
 }
 
 // handleHelp sends help message
@@ -639,12 +677,6 @@ func (b *Bot) handleHelp(msg *tgbotapi.Message) {
 /countries - Full geographic distribution
 /top - Top 10 countries by usage
 /search [country] - Search by country code (e.g. /search US)
-
-🌐 *IP Address Statistics:*
-/ips - Top 10 most active IP addresses
-/ip [address] - Detailed info for specific IP
-/uniqueips - Unique IPs count and breakdown
-/ipactivity - Recent IP activity
 
 📅 *Time-based Statistics:*
 /today - Statistics for today
@@ -667,18 +699,16 @@ func (b *Bot) handleHelp(msg *tgbotapi.Message) {
 • Stats update in real-time
 • Speedtest: 10-min cooldown
 • Use country codes (RU, US, DE, etc.)
-• IP commands help track usage patterns
 • All times in server timezone
 
 🔒 *Privacy & Security:*
-• IPv4 addresses stored for statistics only
+• No IP addresses stored - privacy first
 • Data never shared with third parties
 • Admin-only bot access
 • 90-day data retention
 
 📊 *Example Commands:*
 /search RU - Show Russian connections
-/ip 1.2.3.4 - Info about specific IP
 /compare - Compare today vs yesterday
 
 Need help? Contact the server admin.
@@ -1350,334 +1380,4 @@ func getCountryFlag(code string) string {
 		return flag
 	}
 	return "🌍"
-}
-
-// handleTopIPs shows top IP addresses by connection count
-func (b *Bot) handleTopIPs(msg *tgbotapi.Message) {
-	if b.collector == nil {
-		reply := tgbotapi.NewMessage(msg.Chat.ID, "❌ Statistics module is disabled.")
-		b.api.Send(reply)
-		return
-	}
-
-	ctx := context.Background()
-	rows, err := b.collector.GetDB().QueryContext(ctx,
-		`SELECT client_ip,
-		        (SELECT country FROM connections c2
-		         WHERE c2.client_ip = c1.client_ip
-		         ORDER BY connected_at DESC LIMIT 1) as country,
-		        COUNT(*) as conn_count,
-		        SUM(bytes_in + bytes_out) as total_bytes,
-		        MAX(connected_at) as last_seen
-		 FROM connections c1
-		 GROUP BY client_ip
-		 ORDER BY conn_count DESC
-		 LIMIT 10`)
-	if err != nil {
-		b.sendError(msg.Chat.ID, "Failed to get top IPs")
-		return
-	}
-	defer rows.Close()
-
-	text := "🌐 *Top 10 Most Active IP Addresses*\n\n"
-
-	count := 0
-	for rows.Next() {
-		var ip, country string
-		var connCount, totalBytes int64
-		var lastSeen time.Time
-
-		if err := rows.Scan(&ip, &country, &connCount, &totalBytes, &lastSeen); err != nil {
-			continue
-		}
-
-		count++
-		trafficMB := float64(totalBytes) / (1024 * 1024)
-
-		text += fmt.Sprintf("%d. `%s` %s\n   📊 %s connections | %.1f MB | Last: %s\n",
-			count, ip, getCountryFlag(country),
-			formatNumber(connCount), trafficMB, formatTimeAgo(lastSeen))
-	}
-
-	if count == 0 {
-		text += "_No IP data available yet_"
-	}
-
-	reply := tgbotapi.NewMessage(msg.Chat.ID, text)
-	reply.ParseMode = "Markdown"
-	b.api.Send(reply)
-}
-
-// handleIPInfo shows detailed information about a specific IP
-func (b *Bot) handleIPInfo(msg *tgbotapi.Message) {
-	if b.collector == nil {
-		reply := tgbotapi.NewMessage(msg.Chat.ID, "❌ Statistics module is disabled.")
-		b.api.Send(reply)
-		return
-	}
-
-	args := strings.Fields(msg.CommandArguments())
-	if len(args) == 0 {
-		reply := tgbotapi.NewMessage(msg.Chat.ID, "ℹ️ Usage: `/ip [IP_ADDRESS]`\nExample: `/ip 1.2.3.4`")
-		reply.ParseMode = "Markdown"
-		b.api.Send(reply)
-		return
-	}
-
-	ip := args[0]
-
-	// Validate IP address format
-	if net.ParseIP(ip) == nil {
-		reply := tgbotapi.NewMessage(msg.Chat.ID, "❌ Invalid IP address format. Please provide a valid IPv4 or IPv6 address.")
-		reply.ParseMode = "Markdown"
-		b.api.Send(reply)
-		return
-	}
-
-	ctx := context.Background()
-
-	// Get IP statistics
-	var country, city string
-	var totalConns, totalBytes int64
-	var firstSeen, lastSeen time.Time
-
-	err := b.collector.GetDB().QueryRowContext(ctx,
-		`SELECT
-		        (SELECT country FROM connections c2 WHERE c2.client_ip = ? ORDER BY connected_at DESC LIMIT 1) as country,
-		        (SELECT city FROM connections c2 WHERE c2.client_ip = ? ORDER BY connected_at DESC LIMIT 1) as city,
-		        COUNT(*) as conn_count,
-		        SUM(bytes_in + bytes_out) as total_bytes,
-		        MIN(connected_at) as first_seen,
-		        MAX(connected_at) as last_seen
-		 FROM connections
-		 WHERE client_ip = ?`, ip, ip, ip).Scan(&country, &city, &totalConns, &totalBytes, &firstSeen, &lastSeen)
-
-	if err != nil {
-		log.Printf("[BOT] Error getting IP info for %s: %v", ip, err)
-		reply := tgbotapi.NewMessage(msg.Chat.ID, fmt.Sprintf("❌ No data found for IP: `%s`", ip))
-		reply.ParseMode = "Markdown"
-		b.api.Send(reply)
-		return
-	}
-
-	trafficGB := float64(totalBytes) / (1024 * 1024 * 1024)
-	avgPerConn := float64(0)
-	if totalConns > 0 {
-		avgPerConn = float64(totalBytes) / float64(totalConns) / (1024 * 1024)
-	}
-
-	location := country
-	if city != "" {
-		location = fmt.Sprintf("%s, %s", city, country)
-	}
-
-	text := fmt.Sprintf(`
-🌐 *IP Address Details*
-
-📍 *IP:* `+"`%s`"+`
-🚩 *Location:* %s %s
-
-📊 *Statistics:*
-   • Total Connections: %s
-   • Total Traffic: %.2f GB
-   • Avg per Connection: %.1f MB
-   • First Seen: %s
-   • Last Seen: %s (%s ago)
-
-🕐 *Activity Period:* %s
-`, ip, getCountryFlag(country), location,
-		formatNumber(totalConns), trafficGB, avgPerConn,
-		firstSeen.Format("2006-01-02 15:04"), lastSeen.Format("2006-01-02 15:04"),
-		formatTimeAgo(lastSeen), formatDuration(lastSeen.Sub(firstSeen)))
-
-	// Get recent connections from this IP
-	rows, _ := b.collector.GetDB().QueryContext(ctx,
-		`SELECT connected_at, bytes_in + bytes_out as total_bytes, duration
-		 FROM connections
-		 WHERE client_ip = ?
-		 ORDER BY connected_at DESC
-		 LIMIT 5`, ip)
-
-	if rows != nil {
-		defer rows.Close()
-		text += "\n📜 *Recent Connections:*\n"
-
-		connNum := 0
-		for rows.Next() {
-			var connAt time.Time
-			var bytes, duration int64
-			if err := rows.Scan(&connAt, &bytes, &duration); err == nil {
-				connNum++
-				text += fmt.Sprintf("   %d. %s - %.1f MB - %s\n",
-					connNum, connAt.Format("Jan 02 15:04"),
-					float64(bytes)/(1024*1024),
-					formatDuration(time.Duration(duration)*time.Second))
-			}
-		}
-	}
-
-	reply := tgbotapi.NewMessage(msg.Chat.ID, text)
-	reply.ParseMode = "Markdown"
-	b.api.Send(reply)
-}
-
-// handleUniqueIPs shows unique IP statistics
-func (b *Bot) handleUniqueIPs(msg *tgbotapi.Message) {
-	if b.collector == nil {
-		reply := tgbotapi.NewMessage(msg.Chat.ID, "❌ Statistics module is disabled.")
-		b.api.Send(reply)
-		return
-	}
-
-	ctx := context.Background()
-
-	// Total unique IPs
-	var totalUnique int64
-	if err := b.collector.GetDB().QueryRowContext(ctx,
-		`SELECT COUNT(DISTINCT client_ip) FROM connections`).Scan(&totalUnique); err != nil {
-		log.Printf("[BOT] Error getting total unique IPs: %v", err)
-		b.sendError(msg.Chat.ID, "Failed to get unique IP statistics")
-		return
-	}
-
-	// Unique IPs today
-	var uniqueToday int64
-	if err := b.collector.GetDB().QueryRowContext(ctx,
-		`SELECT COUNT(DISTINCT client_ip) FROM connections
-		 WHERE DATE(connected_at) = DATE('now')`).Scan(&uniqueToday); err != nil {
-		log.Printf("[BOT] Error getting today's unique IPs: %v", err)
-		uniqueToday = 0
-	}
-
-	// Unique IPs this week
-	var uniqueWeek int64
-	if err := b.collector.GetDB().QueryRowContext(ctx,
-		`SELECT COUNT(DISTINCT client_ip) FROM connections
-		 WHERE connected_at >= datetime('now', '-7 days')`).Scan(&uniqueWeek); err != nil {
-		log.Printf("[BOT] Error getting week's unique IPs: %v", err)
-		uniqueWeek = 0
-	}
-
-	// Top countries by unique IPs
-	rows, _ := b.collector.GetDB().QueryContext(ctx,
-		`SELECT country, COUNT(DISTINCT client_ip) as unique_ips
-		 FROM connections
-		 WHERE country != '' AND country != 'Unknown'
-		 GROUP BY country
-		 ORDER BY unique_ips DESC
-		 LIMIT 5`)
-
-	text := fmt.Sprintf(`
-🌐 *Unique IP Addresses*
-
-📊 *Overview:*
-   • All Time: %s unique IPs
-   • This Week: %s unique IPs
-   • Today: %s unique IPs
-
-🌍 *Top Countries by Unique IPs:*
-`, formatNumber(totalUnique), formatNumber(uniqueWeek), formatNumber(uniqueToday))
-
-	if rows != nil {
-		defer rows.Close()
-		pos := 1
-		for rows.Next() {
-			var country string
-			var count int64
-			if err := rows.Scan(&country, &count); err == nil {
-				text += fmt.Sprintf("   %d. %s - %s IPs\n", pos, getCountryFlag(country), formatNumber(count))
-				pos++
-			}
-		}
-	}
-
-	reply := tgbotapi.NewMessage(msg.Chat.ID, text)
-	reply.ParseMode = "Markdown"
-	b.api.Send(reply)
-}
-
-// handleIPActivity shows recent IP activity
-func (b *Bot) handleIPActivity(msg *tgbotapi.Message) {
-	if b.collector == nil {
-		reply := tgbotapi.NewMessage(msg.Chat.ID, "❌ Statistics module is disabled.")
-		b.api.Send(reply)
-		return
-	}
-
-	ctx := context.Background()
-
-	// New IPs today - using more efficient EXISTS
-	var newToday int64
-	if err := b.collector.GetDB().QueryRowContext(ctx,
-		`SELECT COUNT(DISTINCT c1.client_ip) FROM connections c1
-		 WHERE DATE(c1.connected_at) = DATE('now')
-		   AND NOT EXISTS (
-		     SELECT 1 FROM connections c2
-		     WHERE c2.client_ip = c1.client_ip
-		       AND DATE(c2.connected_at) < DATE('now')
-		   )`).Scan(&newToday); err != nil {
-		log.Printf("[BOT] Error getting new IPs today: %v", err)
-		newToday = 0
-	}
-
-	// Most active IP today
-	var topIP, topCountry string
-	var topConns int64
-	if err := b.collector.GetDB().QueryRowContext(ctx,
-		`SELECT client_ip,
-		        (SELECT country FROM connections c2 WHERE c2.client_ip = c1.client_ip ORDER BY connected_at DESC LIMIT 1) as country,
-		        COUNT(*) as conn_count
-		 FROM connections c1
-		 WHERE DATE(connected_at) = DATE('now')
-		 GROUP BY client_ip
-		 ORDER BY conn_count DESC
-		 LIMIT 1`).Scan(&topIP, &topCountry, &topConns); err != nil {
-		log.Printf("[BOT] Error getting most active IP today: %v", err)
-		topIP = ""
-	}
-
-	text := fmt.Sprintf(`
-⚡ *Recent IP Activity*
-
-🆕 *New IPs Today:* %s
-
-`, formatNumber(newToday))
-
-	if topIP != "" {
-		text += fmt.Sprintf(`🏆 *Most Active IP Today:*
-   `+"`%s`"+` %s
-   %s connections
-
-`, topIP, getCountryFlag(topCountry), formatNumber(topConns))
-	}
-
-	// Recent new IPs
-	rows, _ := b.collector.GetDB().QueryContext(ctx,
-		`SELECT client_ip, country, MIN(connected_at) as first_seen, COUNT(*) as conn_count
-		 FROM connections
-		 GROUP BY client_ip
-		 ORDER BY first_seen DESC
-		 LIMIT 10`)
-
-	if rows != nil {
-		defer rows.Close()
-		text += "📋 *Recently Seen IPs:*\n"
-
-		count := 0
-		for rows.Next() {
-			var ip, country string
-			var firstSeen time.Time
-			var connCount int64
-			if err := rows.Scan(&ip, &country, &firstSeen, &connCount); err == nil {
-				count++
-				text += fmt.Sprintf("   %d. `%s` %s - %s ago (%s conn)\n",
-					count, ip, getCountryFlag(country),
-					formatTimeAgo(firstSeen), formatNumber(connCount))
-			}
-		}
-	}
-
-	reply := tgbotapi.NewMessage(msg.Chat.ID, text)
-	reply.ParseMode = "Markdown"
-	b.api.Send(reply)
 }
