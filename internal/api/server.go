@@ -148,15 +148,21 @@ func (s *Server) handleTriggerSpeedtest(w http.ResponseWriter, r *http.Request) 
 		triggeredBy = "web"
 	}
 
-	result, err := s.speedtest.RunSpeedtest(r.Context(), triggeredBy, clientIP)
-	if err != nil {
-		log.Printf("[API] Speedtest failed: %v", err)
-		http.Error(w, err.Error(), http.StatusTooManyRequests)
-		return
-	}
+	// Run speedtest asynchronously to avoid timeout
+	go func() {
+		ctx := context.Background()
+		_, err := s.speedtest.RunSpeedtest(ctx, triggeredBy, clientIP)
+		if err != nil {
+			log.Printf("[API] Speedtest failed: %v", err)
+		}
+	}()
 
+	// Respond immediately with acceptance
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(result)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"status":  "accepted",
+		"message": "Speed test started. Results will be available in about 30-60 seconds. Use the refresh button to see results.",
+	})
 }
 
 // handleConnectionHistory returns connection history (private endpoint)
