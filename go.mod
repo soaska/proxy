@@ -4,7 +4,6 @@ go 1.25.3
 
 require (
 	github.com/c-robinson/iplib v1.0.8
-	github.com/go-telegram-bot-api/telegram-bot-api/v5 v5.5.1
 	github.com/mattn/go-sqlite3 v1.14.32
 	github.com/oschwald/geoip2-golang v1.13.0
 	golang.org/x/sys v0.33.0

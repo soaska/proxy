@@ -17,7 +17,6 @@ import (
 	"github.com/soaska/proxy/internal/socks5"
 
 	"github.com/soaska/proxy/internal/api"
-	"github.com/soaska/proxy/internal/bot"
 	"github.com/soaska/proxy/internal/database"
 	"github.com/soaska/proxy/internal/geoip"
 	"github.com/soaska/proxy/internal/speedtest"
@@ -78,20 +77,6 @@ func main() {
 				log.Printf("[API] Server error: %v", err)
 			}
 		}()
-	}
-
-	// Start Telegram bot if enabled
-	if cfg.Telegram.Enabled && cfg.Telegram.BotToken != "" {
-		telegramBot, err := bot.NewBot(cfg.Telegram.BotToken, cfg.Telegram.AdminIDs, statsCollector, speedtestService)
-		if err != nil {
-			log.Printf("[BOT] Failed to initialize bot: %v", err)
-		} else {
-			go func() {
-				if err := telegramBot.Start(ctx); err != nil {
-					log.Printf("[BOT] Bot error: %v", err)
-				}
-			}()
-		}
 	}
 
 	// Setup SOCKS5 server

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -26,9 +25,6 @@ type config struct {
 
 	// API configuration
 	API APIConfig `yaml:"api"`
-
-	// Telegram bot configuration
-	Telegram TelegramConfig `yaml:"telegram"`
 }
 
 type StatsConfig struct {
@@ -43,12 +39,6 @@ type APIConfig struct {
 	Listen      string   `yaml:"listen"`
 	APIKey      string   `yaml:"api_key"`
 	CORSOrigins []string `yaml:"cors_origins"`
-}
-
-type TelegramConfig struct {
-	Enabled  bool    `yaml:"enabled"`
-	BotToken string  `yaml:"bot_token"`
-	AdminIDs []int64 `yaml:"admin_ids"`
 }
 
 var cfg *config
@@ -67,9 +57,6 @@ func loadConfig() error {
 		API: APIConfig{
 			Enabled: true,
 			Listen:  ":8080",
-		},
-		Telegram: TelegramConfig{
-			Enabled: false,
 		},
 	}
 
@@ -131,22 +118,5 @@ func applyEnvOverrides() {
 	}
 	if v := os.Getenv("API_KEY"); v != "" {
 		cfg.API.APIKey = v
-	}
-
-	// Telegram
-	if v := os.Getenv("TELEGRAM_ENABLED"); v != "" {
-		cfg.Telegram.Enabled = v == "true" || v == "1"
-	}
-	if v := os.Getenv("TELEGRAM_BOT_TOKEN"); v != "" {
-		cfg.Telegram.BotToken = v
-	}
-	if v := os.Getenv("TELEGRAM_ADMIN_IDS"); v != "" {
-		ids := strings.Split(v, ",")
-		cfg.Telegram.AdminIDs = make([]int64, 0, len(ids))
-		for _, id := range ids {
-			if val, err := strconv.ParseInt(strings.TrimSpace(id), 10, 64); err == nil {
-				cfg.Telegram.AdminIDs = append(cfg.Telegram.AdminIDs, val)
-			}
-		}
 	}
 }

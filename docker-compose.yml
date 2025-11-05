@@ -48,6 +48,3 @@ services:
       start_period: 10s
 volumes:
   data:
-networks:
-  proxy-network:
-    driver: bridge
