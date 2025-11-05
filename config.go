@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"gopkg.in/yaml.v3"
@@ -138,5 +139,14 @@ func applyEnvOverrides() {
 	}
 	if v := os.Getenv("TELEGRAM_BOT_TOKEN"); v != "" {
 		cfg.Telegram.BotToken = v
+	}
+	if v := os.Getenv("TELEGRAM_ADMIN_IDS"); v != "" {
+		ids := strings.Split(v, ",")
+		cfg.Telegram.AdminIDs = make([]int64, 0, len(ids))
+		for _, id := range ids {
+			if val, err := strconv.ParseInt(strings.TrimSpace(id), 10, 64); err == nil {
+				cfg.Telegram.AdminIDs = append(cfg.Telegram.AdminIDs, val)
+			}
+		}
 	}
 }

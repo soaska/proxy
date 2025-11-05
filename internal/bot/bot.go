@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"strings"
 	"time"
 
@@ -568,7 +569,7 @@ func (b *Bot) handleServerInfo(msg *tgbotapi.Message) {
 	  • Total: %.2f GB
 	  • Download: %.2f GB
 	  • Upload: %.2f GB
-	  • Ratio: %.2f
+	  • Ratio: %.2f:1
 
 🔗 *Connection Statistics*
 	  • Total Connections: %s
@@ -584,7 +585,12 @@ func (b *Bot) handleServerInfo(msg *tgbotapi.Message) {
 		statsData.TotalTrafficGB,
 		trafficIn,
 		trafficOut,
-		trafficIn/trafficOut,
+		func() float64 {
+			if trafficOut > 0 {
+				return trafficIn / trafficOut
+			}
+			return 0
+		}(),
 		formatNumber(statsData.TotalConnections),
 		statsData.ActiveConnections,
 		len(statsData.Countries),
@@ -1352,10 +1358,14 @@ func (b *Bot) handleTopIPs(msg *tgbotapi.Message) {
 
 	ctx := context.Background()
 	rows, err := b.collector.GetDB().QueryContext(ctx,
-		`SELECT client_ip, country, COUNT(*) as conn_count,
+		`SELECT client_ip,
+		        (SELECT country FROM connections c2
+		         WHERE c2.client_ip = c1.client_ip
+		         ORDER BY connected_at DESC LIMIT 1) as country,
+		        COUNT(*) as conn_count,
 		        SUM(bytes_in + bytes_out) as total_bytes,
 		        MAX(connected_at) as last_seen
-		 FROM connections
+		 FROM connections c1
 		 GROUP BY client_ip
 		 ORDER BY conn_count DESC
 		 LIMIT 10`)
@@ -1411,6 +1421,15 @@ func (b *Bot) handleIPInfo(msg *tgbotapi.Message) {
 	}
 
 	ip := args[0]
+
+	// Validate IP address format
+	if net.ParseIP(ip) == nil {
+		reply := tgbotapi.NewMessage(msg.Chat.ID, "❌ Invalid IP address format. Please provide a valid IPv4 or IPv6 address.")
+		reply.ParseMode = "Markdown"
+		b.api.Send(reply)
+		return
+	}
+
 	ctx := context.Background()
 
 	// Get IP statistics
@@ -1419,15 +1438,18 @@ func (b *Bot) handleIPInfo(msg *tgbotapi.Message) {
 	var firstSeen, lastSeen time.Time
 
 	err := b.collector.GetDB().QueryRowContext(ctx,
-		`SELECT country, city, COUNT(*) as conn_count,
+		`SELECT
+		        (SELECT country FROM connections c2 WHERE c2.client_ip = ? ORDER BY connected_at DESC LIMIT 1) as country,
+		        (SELECT city FROM connections c2 WHERE c2.client_ip = ? ORDER BY connected_at DESC LIMIT 1) as city,
+		        COUNT(*) as conn_count,
 		        SUM(bytes_in + bytes_out) as total_bytes,
 		        MIN(connected_at) as first_seen,
 		        MAX(connected_at) as last_seen
 		 FROM connections
-		 WHERE client_ip = ?
-		 GROUP BY client_ip`, ip).Scan(&country, &city, &totalConns, &totalBytes, &firstSeen, &lastSeen)
+		 WHERE client_ip = ?`, ip, ip, ip).Scan(&country, &city, &totalConns, &totalBytes, &firstSeen, &lastSeen)
 
 	if err != nil {
+		log.Printf("[BOT] Error getting IP info for %s: %v", ip, err)
 		reply := tgbotapi.NewMessage(msg.Chat.ID, fmt.Sprintf("❌ No data found for IP: `%s`", ip))
 		reply.ParseMode = "Markdown"
 		b.api.Send(reply)
@@ -1435,7 +1457,10 @@ func (b *Bot) handleIPInfo(msg *tgbotapi.Message) {
 	}
 
 	trafficGB := float64(totalBytes) / (1024 * 1024 * 1024)
-	avgPerConn := float64(totalBytes) / float64(totalConns) / (1024 * 1024)
+	avgPerConn := float64(0)
+	if totalConns > 0 {
+		avgPerConn = float64(totalBytes) / float64(totalConns) / (1024 * 1024)
+	}
 
 	location := country
 	if city != "" {
@@ -1504,20 +1529,30 @@ func (b *Bot) handleUniqueIPs(msg *tgbotapi.Message) {
 
 	// Total unique IPs
 	var totalUnique int64
-	b.collector.GetDB().QueryRowContext(ctx,
-		`SELECT COUNT(DISTINCT client_ip) FROM connections`).Scan(&totalUnique)
+	if err := b.collector.GetDB().QueryRowContext(ctx,
+		`SELECT COUNT(DISTINCT client_ip) FROM connections`).Scan(&totalUnique); err != nil {
+		log.Printf("[BOT] Error getting total unique IPs: %v", err)
+		b.sendError(msg.Chat.ID, "Failed to get unique IP statistics")
+		return
+	}
 
 	// Unique IPs today
 	var uniqueToday int64
-	b.collector.GetDB().QueryRowContext(ctx,
+	if err := b.collector.GetDB().QueryRowContext(ctx,
 		`SELECT COUNT(DISTINCT client_ip) FROM connections
-		 WHERE DATE(connected_at) = DATE('now')`).Scan(&uniqueToday)
+		 WHERE DATE(connected_at) = DATE('now')`).Scan(&uniqueToday); err != nil {
+		log.Printf("[BOT] Error getting today's unique IPs: %v", err)
+		uniqueToday = 0
+	}
 
 	// Unique IPs this week
 	var uniqueWeek int64
-	b.collector.GetDB().QueryRowContext(ctx,
+	if err := b.collector.GetDB().QueryRowContext(ctx,
 		`SELECT COUNT(DISTINCT client_ip) FROM connections
-		 WHERE connected_at >= datetime('now', '-7 days')`).Scan(&uniqueWeek)
+		 WHERE connected_at >= datetime('now', '-7 days')`).Scan(&uniqueWeek); err != nil {
+		log.Printf("[BOT] Error getting week's unique IPs: %v", err)
+		uniqueWeek = 0
+	}
 
 	// Top countries by unique IPs
 	rows, _ := b.collector.GetDB().QueryContext(ctx,
@@ -1567,25 +1602,35 @@ func (b *Bot) handleIPActivity(msg *tgbotapi.Message) {
 
 	ctx := context.Background()
 
-	// New IPs today
+	// New IPs today - using more efficient EXISTS
 	var newToday int64
-	b.collector.GetDB().QueryRowContext(ctx,
-		`SELECT COUNT(DISTINCT client_ip) FROM connections
-		 WHERE client_ip NOT IN (
-		     SELECT DISTINCT client_ip FROM connections
-		     WHERE DATE(connected_at) < DATE('now')
-		 ) AND DATE(connected_at) = DATE('now')`).Scan(&newToday)
+	if err := b.collector.GetDB().QueryRowContext(ctx,
+		`SELECT COUNT(DISTINCT c1.client_ip) FROM connections c1
+		 WHERE DATE(c1.connected_at) = DATE('now')
+		   AND NOT EXISTS (
+		     SELECT 1 FROM connections c2
+		     WHERE c2.client_ip = c1.client_ip
+		       AND DATE(c2.connected_at) < DATE('now')
+		   )`).Scan(&newToday); err != nil {
+		log.Printf("[BOT] Error getting new IPs today: %v", err)
+		newToday = 0
+	}
 
 	// Most active IP today
 	var topIP, topCountry string
 	var topConns int64
-	b.collector.GetDB().QueryRowContext(ctx,
-		`SELECT client_ip, country, COUNT(*) as conn_count
-		 FROM connections
+	if err := b.collector.GetDB().QueryRowContext(ctx,
+		`SELECT client_ip,
+		        (SELECT country FROM connections c2 WHERE c2.client_ip = c1.client_ip ORDER BY connected_at DESC LIMIT 1) as country,
+		        COUNT(*) as conn_count
+		 FROM connections c1
 		 WHERE DATE(connected_at) = DATE('now')
 		 GROUP BY client_ip
 		 ORDER BY conn_count DESC
-		 LIMIT 1`).Scan(&topIP, &topCountry, &topConns)
+		 LIMIT 1`).Scan(&topIP, &topCountry, &topConns); err != nil {
+		log.Printf("[BOT] Error getting most active IP today: %v", err)
+		topIP = ""
+	}
 
 	text := fmt.Sprintf(`
 ⚡ *Recent IP Activity*
