@@ -38,8 +38,6 @@ services:
     volumes:
       - data:/root/data  # Persistent storage for database and GeoIP
       #- ./config.yml:/root/config.yml:ro  # Optional: mount custom config
-    networks:
-      - proxy-network
     healthcheck:
       test: ["CMD", "nc", "-z", "localhost", "6666"]
       interval: 30s
