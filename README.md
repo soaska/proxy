@@ -3,7 +3,7 @@
 
 # Прокси telegram
 
-Тот самый безопасный SOCKS5 прокси.
+Тот самый безопасный SOCKS5 прокси для телеграм.
 
 [proxi.soaska.ru](https://proxi.soaska.ru)
 
