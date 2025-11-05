@@ -555,7 +555,16 @@ func (b *Bot) handleServerInfo(msg *tgbotapi.Message) {
 
 	// Get database size
 	var dbSizeKB int64
-	b.collector.GetDB().QueryRow("SELECT page_count * page_size / 1024 FROM pragma_page_count(), pragma_page_size()").Scan(&dbSizeKB)
+	if err := b.collector.GetDB().QueryRow("SELECT page_count * page_size / 1024 FROM pragma_page_count(), pragma_page_size()").Scan(&dbSizeKB); err != nil {
+		log.Printf("[BOT] Error getting database size: %v", err)
+		dbSizeKB = 0
+	}
+
+	// Calculate traffic ratio safely
+	trafficRatio := float64(0)
+	if trafficOut > 0 {
+		trafficRatio = trafficIn / trafficOut
+	}
 
 	text := fmt.Sprintf(`
 ℹ️ *Detailed Server Information*
@@ -585,12 +594,7 @@ func (b *Bot) handleServerInfo(msg *tgbotapi.Message) {
 		statsData.TotalTrafficGB,
 		trafficIn,
 		trafficOut,
-		func() float64 {
-			if trafficOut > 0 {
-				return trafficIn / trafficOut
-			}
-			return 0
-		}(),
+		trafficRatio,
 		formatNumber(statsData.TotalConnections),
 		statsData.ActiveConnections,
 		len(statsData.Countries),
@@ -599,19 +603,19 @@ func (b *Bot) handleServerInfo(msg *tgbotapi.Message) {
 	// Add geographic coverage if available
 	if len(statsData.Countries) > 0 && statsData.Countries[0].Country != "" {
 		text += fmt.Sprintf(`
-	🌐 *Geographic Coverage*
-		  • Top Country: %s %s (%.1f%%)
-		  • Total Countries: %d
-	`,
+🌐 *Geographic Coverage*
+	  • Top Country: %s %s (%.1f%%)
+	  • Total Countries: %d
+`,
 			getCountryFlag(statsData.Countries[0].Country),
 			statsData.Countries[0].CountryName,
 			statsData.Countries[0].Percentage,
 			len(statsData.Countries))
 	} else {
 		text += `
-	🌐 *Geographic Coverage*
-		  • No country data available yet
-	`
+🌐 *Geographic Coverage*
+	  • No country data available yet
+`
 	}
 
 	reply := tgbotapi.NewMessage(msg.Chat.ID, text)
