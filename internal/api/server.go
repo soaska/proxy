@@ -125,24 +125,6 @@ type ExportResponse struct {
 	TopCountries []CountryUsage             `json:"top_countries"`
 }
 
-type StatusResponse struct {
-	Status            string    `json:"status"`
-	UptimeSeconds     int64     `json:"uptime_seconds"`
-	ActiveConnections int32     `json:"active_connections"`
-	TotalConnections  int64     `json:"total_connections"`
-	TotalTrafficGB    float64   `json:"total_traffic_gb"`
-	UpdatedAt         time.Time `json:"updated_at"`
-}
-
-type HealthResponse struct {
-	Overall               string    `json:"overall"`
-	DatabaseHealthy       bool      `json:"database_healthy"`
-	StatsCollectorHealthy bool      `json:"stats_collector_healthy"`
-	SpeedtestHealthy      bool      `json:"speedtest_healthy"`
-	ActiveConnections     int32     `json:"active_connections"`
-	Timestamp             time.Time `json:"timestamp"`
-}
-
 type InfoResponse struct {
 	UptimeSeconds     int64         `json:"uptime_seconds"`
 	ActiveConnections int32         `json:"active_connections"`
@@ -218,8 +200,6 @@ func NewServer(collector *stats.StatsCollector, st *speedtest.Service, apiKey st
 	s.mux.HandleFunc("/api/admin/stats/compare", s.corsMiddleware(s.authMiddleware(s.handleCompareStats)))
 	s.mux.HandleFunc("/api/admin/stats/search", s.corsMiddleware(s.authMiddleware(s.handleSearchStats)))
 	s.mux.HandleFunc("/api/admin/stats/export", s.corsMiddleware(s.authMiddleware(s.handleExportStats)))
-	s.mux.HandleFunc("/api/admin/stats/status", s.corsMiddleware(s.authMiddleware(s.handleStatus)))
-	s.mux.HandleFunc("/api/admin/stats/health", s.corsMiddleware(s.authMiddleware(s.handleHealth)))
 	s.mux.HandleFunc("/api/admin/stats/info", s.corsMiddleware(s.authMiddleware(s.handleInfo)))
 
 	log.Println("[API] API routes configured")
@@ -934,77 +914,6 @@ func (s *Server) handleExportStats(w http.ResponseWriter, r *http.Request) {
 		Timestamp:    time.Now().UTC(),
 		Stats:        publicStats,
 		TopCountries: topCountries,
-	})
-}
-
-func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		respondError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-
-	ctx := r.Context()
-
-	publicStats, err := s.collector.GetPublicStats(ctx)
-	if err != nil {
-		log.Printf("[API] Failed to get public stats: %v", err)
-		respondError(w, http.StatusInternalServerError, "failed to get status")
-		return
-	}
-
-	downloadBytes, uploadBytes, err := s.fetchServerTotals(ctx)
-	if err != nil {
-		log.Printf("[API] Failed to get server totals: %v", err)
-		respondError(w, http.StatusInternalServerError, "failed to get status")
-		return
-	}
-
-	status := "online"
-	if publicStats.ActiveConnections == 0 {
-		status = "idle"
-	}
-
-	writeJSON(w, StatusResponse{
-		Status:            status,
-		UptimeSeconds:     publicStats.UptimeSeconds,
-		ActiveConnections: publicStats.ActiveConnections,
-		TotalConnections:  publicStats.TotalConnections,
-		TotalTrafficGB:    bytesToGB(downloadBytes + uploadBytes),
-		UpdatedAt:         publicStats.UpdatedAt,
-	})
-}
-
-func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
-		respondError(w, http.StatusMethodNotAllowed, "method not allowed")
-		return
-	}
-
-	ctx := r.Context()
-
-	dbHealthy := true
-	if err := s.collector.GetDB().PingContext(ctx); err != nil {
-		log.Printf("[API] Health check DB error: %v", err)
-		dbHealthy = false
-	}
-
-	statsHealthy := s.collector != nil
-	speedtestHealthy := s.speedtest != nil
-
-	overall := "healthy"
-	if !dbHealthy || !statsHealthy {
-		overall = "unhealthy"
-	} else if !speedtestHealthy {
-		overall = "degraded"
-	}
-
-	writeJSON(w, HealthResponse{
-		Overall:               overall,
-		DatabaseHealthy:       dbHealthy,
-		StatsCollectorHealthy: statsHealthy,
-		SpeedtestHealthy:      speedtestHealthy,
-		ActiveConnections:     s.collector.GetActiveConnections(),
-		Timestamp:             time.Now().UTC(),
 	})
 }
 
